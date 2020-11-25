@@ -145,8 +145,7 @@ public:
             int maxWrite = 5;
             Mat cv_img(image->w,image->h,CV_8UC3);
             //eigen2cv(image, img);
-            //imwrite("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/1.jpg",img);
-
+            
             for(int y=0;y<image->h;y++)
             {
                 for(int x=0;x<image->w;x++)
@@ -160,7 +159,7 @@ public:
                 }
                 if(maxWrite==0) break;
             }
-            imwrite("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(KF->frameID)+".png",cv_img);
+            imwrite("/home/rafiqul/results/"+boost::to_string(KF->frameID)+".png",cv_img);
             counter++;
 
         }
