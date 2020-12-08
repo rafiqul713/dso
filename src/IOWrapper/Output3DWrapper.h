@@ -52,7 +52,7 @@ namespace IOWrap
  *
  * (2) always get the depthmap of the most recent keyframe
  *     -> Implement [pushDepthImageFloat] (use inverse depth in [image], and pose / frame information from [KF]).
- *
+ *	
  * (3) accumulate final model
  *     -> Implement [publishKeyframes] (skip for final!=false), and accumulate frames.
  *

@@ -34,6 +34,7 @@
 
 
 #include<cstring>
+#include "IOWrapper/OpenCV/ImageRW_OpenCV.cpp"
 #include <opencv/cv.hpp>
 #include <opencv2/core/eigen.hpp>
 using namespace cv;
@@ -126,11 +127,13 @@ public:
 
         virtual void pushDepthImage(MinimalImageB3* image) override
         {
+            writeImage("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(counter)+".png",image);
+            counter++;
             // can be used to get the raw image with depth overlay.
         }
         virtual bool needPushDepthImage() override
         {
-            return false; 
+            return true; 
         }
 
         virtual void pushDepthImageFloat(MinimalImageF* image, FrameHessian* KF ) override
@@ -159,8 +162,9 @@ public:
                 }
                 if(maxWrite==0) break;
             }
-            imwrite("/home/rafiqul/results/"+boost::to_string(KF->frameID)+".png",cv_img);
-            counter++;
+            //writeImage("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(KF->frameID)+".png",image);
+            //imwrite("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(KF->frameID)+".png",cv_img);
+            //counter++;
 
         }
 
