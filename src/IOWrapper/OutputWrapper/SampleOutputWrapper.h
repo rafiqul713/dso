@@ -60,16 +60,22 @@ class SampleOutputWrapper : public Output3DWrapper
 public:
         inline SampleOutputWrapper()
         {
+            num_of_point_cloud = 0;
+            save_point_cloud = true;
+            is_point_cloud_file_close = false;            
+			point_cloud_file_obj.open(point_cloud_file_name);
             printf("OUT: Created SampleOutputWrapper\n");
         }
 
         virtual ~SampleOutputWrapper()
         {
+            point_cloud_file_obj.close();
             printf("OUT: Destroyed SampleOutputWrapper\n");
         }
 
         virtual void publishGraph(const std::map<uint64_t, Eigen::Vector2i, std::less<uint64_t>, Eigen::aligned_allocator<std::pair<const uint64_t, Eigen::Vector2i>>> &connectivity) override
         {
+            /*
             printf("OUT: got graph with %d edges\n", (int)connectivity.size());
 
             int maxWrite = 5;
@@ -82,41 +88,92 @@ public:
                 maxWrite--;
                 if(maxWrite==0) break;
             }
+            */
         }
 
 
+        /*
+            Goal: Save point cloud from Direct Sparse Odometry (DSO)
+            Credit: https://github.com/Neoplanetz/dso_with_saving_pcl 
+        */
 
         virtual void publishKeyframes( std::vector<FrameHessian*> &frames, bool final, CalibHessian* HCalib) override
         {
-            for(FrameHessian* f : frames)
-            {
-                printf("OUT: KF %d (%s) (id %d, tme %f): %d active, %d marginalized, %d immature points. CameraToWorld:\n",
-                       f->frameID,
-                       final ? "final" : "non-final",
-                       f->shell->incoming_id,
-                       f->shell->timestamp,
-                       (int)f->pointHessians.size(), (int)f->pointHessiansMarginalized.size(), (int)f->immaturePoints.size());
-                std::cout << f->shell->camToWorld.matrix3x4() << "\n";
+
+            float FX,FY; // focal length expressed in pixels and it translate a pixel coordinate into lengths
+            float CX,CY; // coordinates of the principal points
+            float FXi, FYi, CXi, CYi;
+            //fxl(), fyl(), cxl(), cyl(): get optimized, most recent (pinhole) camera intrinsics.
+            FX = HCalib->fxl(); // get focal length
+            FY = HCalib->fyl(); // get focal length
+            CX = HCalib->cxl(); // get principal point or center of the image
+            CY = HCalib->cyl(); // get principal point or center of the image
+            
+            FXi = 1 / FX;
+            FYi = 1 / FY;
+            CXi = -CX / FX;
+            CYi = -CY / FY;
+
+            if (final==true) { //Get the final model, but don't care about it being delay-free and to save compute
+                for (FrameHessian* f : frames) {
+                    bool is_pose_valid=f->shell->poseValid; //>poseValid = false if [camToWorld] is invalid (only happens for frames during initialization)
+  
+                    if (is_pose_valid) { // if valid
+                        auto const& m = f->shell->camToWorld.matrix3x4();   //describes the mapping of a pinhole camera from 3D points in the world to 2D points in an image     
+                        auto const& points = f->pointHessiansMarginalized; //contains marginalized points.
+                        for (auto const* p : points) {
+                            float depth = (1.0f/p->idepth); // convert the inverse depth into depth
+                            // convert depth map into point cloud
+                            // calculate the value of x,y,z coordinates
+                            // idea behind this: https://medium.com/yodayoda/from-depth-map-to-point-cloud-7473721d3f
+                            /*
+                                Image plane in p->u, p->v coordinates
+                                Each pixel has a colour and a depth value
+                                On the otherhand x,y,z are cartesian coordinates
+                            */
+                            auto const x = (p->u * FXi + CXi) * depth;
+                            auto const y = (p->v * FYi + CYi) * depth;
+                            auto const z = depth * (1 + 2 * FXi);
+
+                            Eigen::Vector4d camPoint(x, y, z, 1.f);
+                            Eigen::Vector3d real_world_coordinates = m * camPoint;
+
+                            // save point cloud when it is save mode
+                            if (save_point_cloud && point_cloud_file_obj.is_open()) { // save point cloud
+                                write_point_cloud = true;
+                                point_cloud_file_obj << real_world_coordinates[0] << " " << real_world_coordinates[1] << " " << real_world_coordinates[2] << "\n";
+                                num_of_point_cloud++;
+                                write_point_cloud = false;
+                            }
+                            // otherwise close the point cloud file object
+                            else {
+                                if (!is_point_cloud_file_close) {
+                                    if (point_cloud_file.is_open()) {
+                                        point_cloud_file_obj.flush();
+                                        point_cloud_file_obj.close();
+                                        is_point_cloud_file_close = true;
+                                    }
+                                }
+                            }
 
 
-                int maxWrite = 5;
-                for(PointHessian* p : f->pointHessians)
-                {
-                    printf("OUT: Example Point x=%.1f, y=%.1f, idepth=%f, idepth std.dev. %f, %d inlier-residuals\n",
-                           p->u, p->v, p->idepth_scaled, sqrt(1.0f / p->idepth_hessian), p->numGoodResiduals );
-                    maxWrite--;
-                    if(maxWrite==0) break;
+                         }
+                    }
                 }
             }
+
+
         }
 
         virtual void publishCamPose(FrameShell* frame, CalibHessian* HCalib) override
         {
+            /*
             printf("OUT: Current Frame %d (time %f, internal ID %d). CameraToWorld:\n",
                    frame->incoming_id,
                    frame->timestamp,
                    frame->id);
             std::cout << frame->camToWorld.matrix3x4() << "\n";
+            */
         }
 
 
@@ -125,16 +182,19 @@ public:
             // can be used to get the raw image / intensity pyramid.
         }
 
-        virtual void pushDepthImage(MinimalImageB3* image) override
-        {
-            writeImage("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(counter)+".png",image);
-            counter++;
-            // can be used to get the raw image with depth overlay.
+       /*
+            Store semi dense depth
+       */
+       virtual void pushDepthImage(MinimalImageB3* image) override
+        {   
+            //writeImage("/home/rafiqul/results/"+boost::to_string(counter)+".png",image); //store semi dense depth
+            //counter++;
         }
         virtual bool needPushDepthImage() override
         {
-            return true; 
+            return true;
         }
+
 
         virtual void pushDepthImageFloat(MinimalImageF* image, FrameHessian* KF ) override
         {
@@ -162,11 +222,13 @@ public:
                 }
                 if(maxWrite==0) break;
             }
-            //writeImage("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(KF->frameID)+".png",image);
-            //imwrite("/home/rafiqul/Documents/Thesis/Code/GitHub/masters_thesis/dso/results/"+boost::to_string(KF->frameID)+".png",cv_img);
+            //writeImage("/home/rafiqul/results/"+boost::to_string(KF->frameID)+".png",image);
+            //imwrite("/home/rafiqul/results/"+boost::to_string(KF->frameID)+".png",cv_img);
             //counter++;
 
         }
+
+        std::ofstream pclFile;
 
 
 };
