@@ -228,7 +228,7 @@ public:
 
         }
 
-        std::ofstream pclFile;
+        std::ofstream point_cloud_file_obj;
 
 
 };
